@@ -5,12 +5,12 @@ binary_name=$(current_dir)
 %:
 	@:
 
-build:
-	@nasm -g -f elf64 $(binary_name).asm
-	@ld -m elf_x86_64 -static -o $(binary_name) $(binary_name).o
+build: $(binary_name).asm
+	nasm -g -f elf64 $(binary_name).asm
+	ld -m elf_x86_64 -static -o $(binary_name) $(binary_name).o
 
 clean:
-	@rm -f $(binary_name) $(binary_name).o
+	rm -f $(binary_name) $(binary_name).o
 
 run: build
-	@./$(binary_name) $(args)
+	./$(binary_name) $(args)
