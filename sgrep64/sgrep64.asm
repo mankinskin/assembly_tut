@@ -1,16 +1,24 @@
+bits 64
 ;;; system calls
 %define SYS_WRITE	1
 %define SYS_OPEN	2
 %define SYS_CLOSE	3
 %define SYS_EXIT	60
+%define O_RDONLY	0
+%define SYS_READ	0x0
 ;;; file ids
+%define STDIN			0
 %define STDOUT		1
 
 ;;; start of data section
 section .data
 ;;; a newline character
 newline		db	0x0a
-end_of_file		db	-1
+
+section .bss
+	file_buffer resb 2040
+	file_buffer_size equ $-file_buffer
+	match_found resb 1
 
 ;;; start of code section
 section	.text
@@ -22,46 +30,163 @@ section	.text
 _start:
 	pop rbx		; pop argument count into rbx (>= 1 guaranteed)
 	pop rdi   ; drop first argument (command name)
-
 read_args:
-	;; read next argument
 	dec rbx   
-	jz exit   ; when argument count 0 
-	pop rdi   ; pop address to next argument into rsi
-	call count_string_length
-	jmp read_args
+	jz exit   ; exit when argument count 0 
+	call get_stdin
+	; file buffer contains stdin
+	; rcx contains stdin length
 
+	;; read next argument
+	pop rdi   ; pop address to next argument into rdi
+	; rdi = word
+	mov rsi, file_buffer
+	; rsi = text
+	call search_lines
+	jmp read_args
+; -------
+search_lines:
+	push rcx ; rcx,
+	push rdx ; rcx, rdx
+	push rsi ; rcx, rdx, rsi
+	; rcx = text length
+	mov rdx, rcx
+	; rdx : total length
+next_line:
+	mov rcx, 0
+	; rcx : length read
+	cmp [rsi], byte 0
+	je end_lines
+
+	; rsi = string
+	call count_line_length
+	; rcx = line length
+	
+	; rcx = max length
+	; rsi = text
+	call search_string
+	; match_found : 1 or 0
+	cmp [match_found], byte 1
+	je print_line
+	jmp end_line
+print_line:
+	; rcx = write length
+	call write
+	call write_newline
+end_line:
+	add rsi, rcx
+	inc rsi
+	jmp next_line
+end_lines:
+	pop rsi		; rcx, rdx,
+	pop rdx		; rcx,
+	pop rcx		;
+	ret
+; -------
+search_string:
+	; rdi = word (searched for)
+	; rsi = text (searched in)
+	; rcx = max search length
+	push rdx ; rdx,
+	push rax ; rdx, rax
+	push r8 ; rdx, rax, r8
+	mov rdx, 0
+	; rdx : index in word
+	mov r8, 0
+	; r8 : index in text
+	; rax : buffer for calculations
+	mov [match_found], byte 0
+next_char:
+	mov rax, r8
+	add rax, rdx ; rax = r8 + rdx
+	cmp rax, rcx ; max length?
+	je end_search
+	mov rax, rdi
+	add rax, rdx ; rax = rdi + rdx
+	cmp [rax], byte 0 ; end of word?
+	je end_search
+match_chars:
+	mov rax, [rax]	; char in word
+	push rsi
+	add rsi, r8		; rsi = pointer to current index
+	cmp [rsi + rdx], al
+	pop rsi
+	je char_match
+	jmp char_miss
+char_match:
+	inc rdx
+	mov [match_found], byte 1
+	jmp next_char
+char_miss:
+	mov rdx, 0	; match from beginning again
+	inc r8			; inc chars checked
+	mov [match_found], byte 0
+	jmp next_char
+end_search:	
+	pop r8	; rdx, rax
+	pop rax ; rdx,
+	pop rdx ;
+	ret
+; -------
+get_stdin:
+	; file_buffer : data from stdin
+	; rcx : length of data
+	push rsi	; rsi,
+	push rdx	; rsi, rdx
+	mov rsi, file_buffer
+	; rsi = text buffer
+	mov rdx, file_buffer_size
+	; rdx = read length
+	call read_stdin
+	; rsi = stdin buffer
+
+	; rsi = text buffer
+	call count_string_length
+	; rcx = string length
+
+	;; print buffer (debug)
+	; rsi = text buffer
+	mov rdx, rcx
+	; rdx = write length
+	;call write
+
+	pop rdx		; rsi,
+	pop rsi		;
+	ret
+; -------
 write_newline:
 	push rsi
 	mov rsi, newline
 	call write_char
 	pop rsi
 	ret
-
+; -------
 write_char:
-	push rdx
-	mov rdx, 1
+	push rcx
+	mov rcx, 1
 	; rdx = write length
 	call write
-	pop rdx
+	pop rcx
 	ret
-
+; -------
 write:
 	push rax
 	push rdi
 	push rcx
 	mov	rax, SYS_WRITE	; set syscall to SYS_WRITE
 	mov	rdi, STDOUT			; write to STDOUT
+	mov	rdx, rcx				; set write length
+	; rsi = text
 	; rdx = write length
 	; rax = syscommand
 	; rdi = file descriptor
-	; rcx = ?
 	syscall
+	; rcx = ?
 	pop rcx
 	pop rdi
 	pop rax
 	ret
-
+; -------
 exit:
 	;; exit program via syscall exit (necessary!)
 	mov	rax, SYS_EXIT
@@ -69,68 +194,59 @@ exit:
 	; rax = syscommand
 	; rdi = exit code
 	syscall
-
-count_file_length:
-	push rax ; rbx, rax
-	mov al, end_of_file
-	; al = end byte
-	call count_length
-	; rcx = length
-	pop rax ; rbx,
-	ret
-
+; -------
 count_line_length:
-	push rax ; rbx, rax
-	mov al, newline
+	push rax ; rax
+	mov al, [newline]
 	; al = end byte
+	; rsi = data
 	call count_length
 	; rcx = length
-	pop rax ; rbx,
+	pop rax ;
 	ret
-
+; -------
 count_string_length:
-	push rax ; rbx, rax
+	push rax ; rax
 	mov al, byte 0
 	; al = end byte
+	; rsi = data
 	call count_length
 	; rcx = length
-	pop rax ; rbx,
+	pop rax ;
 	ret
-
+; -------
 count_length:
-	push rax ; rbx
 	push rbx ; rbx,
-	push rdi ; rbx, rdi
+	push rsi ; rbx, rsi
 	mov rcx, 0
 	; al = end byte
+	; rsi = data
 count_iter:
-	cmp [rdi], al
+	cmp [rsi], al
 	je count_end
 	inc rcx
-	inc rdi
+	inc rsi
 	jmp count_iter
 count_end:	
 	; rcx = length
-	pop rdi ; rbx
-	pop rbx ;
-	pop rax ; rbx,
+	pop rsi ; rbx,
+	pop rbx ; 
 	ret
-
-open_file: 
+; -------
+read_stdin: 
 	push rdi			; rdi
-	mov rax, SYS_OPEN
-	; rax = sys_function
-	; rdi = file name
-	syscall
-	; rax = file handle
+	; rsi = buffer handle
+	mov rdi, STDIN
+	call read_file
 	pop rdi				;
 	ret
-
-close_file:
+; -------
+read_file: 
 	push rax			; rax,
-	mov rax, SYS_CLOSE
-	; rax = sys_function
-	; rdi = file handle
+	; rdi = file descriptor
+	; rsi = buffer handle
+	; rdx = read size
+	mov rax, SYS_READ
 	syscall
 	pop rax				;
 	ret
