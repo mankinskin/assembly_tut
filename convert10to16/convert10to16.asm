@@ -14,6 +14,10 @@ invalid_char_msg				db	"Invalid decimal number"
 invalid_char_msg_len		equ	$-invalid_char_msg
 overflow_msg						db	"Value overflow"
 overflow_msg_len				equ	$-overflow_msg
+decimal_msg						db	"Decimal number = "
+decimal_msg_len				equ	$-decimal_msg
+hex_msg						db	"Hexadecimal number = "
+hex_msg_len				equ	$-hex_msg
 number_buffer		dd			0
 
 section .bss
@@ -55,47 +59,11 @@ read_args:
 	; number_buffer contains decimal
 	mov rsi, text_buffer
 	;mov rax, 1002
-	call write_decimal
-	;call check_error
-	; reverse print text_buffer
-	call reverse_print
-	;call check_error
+	call print_decimal
+
+	call print_hexadecimal
 
 	jmp read_args
-
-; ------------------------------
-write_decimal:
-	; rcx = output length
-	; rax = decimal buffer
-	; rdx = div remainder
-	; rsi = text buffer
-	; rbx = divisor
-	push rax
-	push rdx
-	push rbx
-	xor rcx, rcx ; clear for counting
-loop_write_decimal:
-	mov rdx, 0 ; clear for div
-	mov rbx, 10
-	div rbx ; rdx:rax / 10
-	; rax = result
-	; rdx = remainder
-after_div:
-	add rdx, ascii_0 ; to ascii
-	mov [rsi + rcx], rdx
-	inc rcx
-
-befj:
-	cmp rax, 0			; stop?
-	je end_write_decimal
-afj:
-
-	jmp loop_write_decimal
-end_write_decimal:
-	pop rbx
-	pop rdx
-	pop rax
-	ret
 
 ; ------------------------------
 read_decimal:
@@ -119,22 +87,15 @@ next_digit:
 	cmp rcx, 0		; end of string?
 	je end_decimal
 	dec rcx
-before_char:
 	mov bl, byte [rsi + rcx]
 	; rdi = char
 	sub rbx, ascii_0 ; convert char to decimal value
-before_mul:
 	push rax
 	mul rbx		; rax = rax * rdx
-before_add:
 	add rdi, rax
 	pop rax
-after_add:
 	mul r8		; rax = rax * 10
 	jmp next_digit
-overflow_error:
-	call write_overflow_error
-	mov [error_flag], byte 2
 end_decimal:
 	mov rax, rdi
 	; rax : result
@@ -144,9 +105,116 @@ end_decimal:
 	pop rdx
 	pop rcx
 	ret
+; ------------------------------
+print_hexadecimal:
+	call write_hexadecimal
+	call check_error
+	call write_hex_msg
+	call reverse_print_decimal
+	call check_error
+	call write_newline
+	ret
 
 ; ------------------------------
-reverse_print:
+write_hexadecimal:
+	; rcx = output length
+	; rax = decimal buffer
+	; rdx = div remainder
+	; rsi = text buffer
+	; rbx = divisor
+	push rax
+	push rdx
+	push rbx
+	xor rcx, rcx ; clear for counting
+loop_write_hexadecimal:
+	cmp rcx, 8
+	je overflow_error
+	mov rdx, 0 ; clear for div
+	mov rbx, 16
+	div rbx ; rdx:rax / 16
+	; rax = result
+	; rdx = remainder
+	cmp rdx, 9
+	jle skip_ascii_skip
+	add rdx, 7 ; skip to characters
+skip_ascii_skip:
+	add rdx, ascii_0 ; to ascii
+	mov [rsi + rcx], rdx
+	inc rcx
+
+	cmp rax, 0			; stop?
+	je end_write_hexadecimal
+
+	jmp loop_write_hexadecimal
+overflow_error:
+	call write_overflow_error
+	mov [error_flag], byte 2
+end_write_hexadecimal:
+	pop rbx
+	pop rdx
+	pop rax
+	ret
+
+; ------------------------------
+reverse_print_hexadecimal:
+	; rcx = input length
+	; rsi = text buffer
+	push rcx
+	push rsi
+	add rsi, rcx
+loop_reverse_print_hex:
+	cmp rcx, 0
+	je end_reverse_print_hex
+	dec rcx
+	dec rsi
+	call write_char
+	jmp loop_reverse_print_hex
+end_reverse_print_hex:
+	pop rsi
+	pop rcx
+	ret
+; ------------------------------
+print_decimal:
+	call write_decimal_msg
+	call write_decimal
+	call check_error
+	call reverse_print_decimal
+	call check_error
+	call write_newline
+	ret
+; ------------------------------
+write_decimal:
+	; rcx = output length
+	; rax = decimal buffer
+	; rdx = div remainder
+	; rsi = text buffer
+	; rbx = divisor
+	push rax
+	push rdx
+	push rbx
+	xor rcx, rcx ; clear for counting
+loop_write_decimal:
+	mov rdx, 0 ; clear for div
+	mov rbx, 10
+	div rbx ; rdx:rax / 10
+	; rax = result
+	; rdx = remainder
+	add rdx, ascii_0 ; to ascii
+	mov [rsi + rcx], rdx
+	inc rcx
+
+	cmp rax, 0			; stop?
+	je end_write_decimal
+
+	jmp loop_write_decimal
+end_write_decimal:
+	pop rbx
+	pop rdx
+	pop rax
+	ret
+
+; ------------------------------
+reverse_print_decimal:
 	; rcx = input length
 	; rsi = text buffer
 	push rcx
@@ -161,22 +229,6 @@ loop_reverse_print:
 	jmp loop_reverse_print
 end_reverse_print:
 	pop rsi
-	pop rcx
-	ret
-
-; ------------------------------
-exponent:
-	; rdx = base
-	; rcx = exponent
-	; rax = result
-	push rcx
-	mov rax, 1
-loop_exponent:
-	cmp rcx, byte 0
-	dec rcx
-	mul rdx ; rax = rax * rdx
-	jmp loop_exponent
-end_exponent:
 	pop rcx
 	ret
 
@@ -201,12 +253,35 @@ end_digits:
 	ret
 
 ; ------------------------------
+write_decimal_msg:
+	push rsi
+	push rcx
+	mov rsi, decimal_msg
+	mov rcx, decimal_msg_len
+	call write
+	pop rcx
+	pop rsi
+	ret
+
+; ------------------------------
+write_hex_msg:
+	push rsi
+	push rcx
+	mov rsi, hex_msg
+	mov rcx, hex_msg_len
+	call write
+	pop rcx
+	pop rsi
+	ret
+
+; ------------------------------
 write_overflow_error:
 	push rsi
 	push rcx
 	mov rsi, overflow_msg
 	mov rcx, overflow_msg_len
 	call write
+	call write_newline
 	pop rcx
 	pop rsi
 	ret
@@ -217,6 +292,7 @@ write_invalid_char_error:
 	mov rsi, invalid_char_msg
 	mov rcx, invalid_char_msg_len
 	call write
+	call write_newline
 	pop rcx
 	pop rsi
 	ret
