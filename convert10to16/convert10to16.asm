@@ -18,12 +18,10 @@ decimal_msg						db	"Decimal number = "
 decimal_msg_len				equ	$-decimal_msg
 hex_msg						db	"Hexadecimal number = 0x"
 hex_msg_len				equ	$-hex_msg
-number_buffer		dd			0
 
 section .bss
 	text_buffer		resb 32
 	error_flag			resb 1
-
 
 section	.text
 	;; this symbol has to be defined as entry point of the program
@@ -40,7 +38,6 @@ _start:
 	pop rbx		; pop argument count into rbx (>= 1 guaranteed)
 	pop rdi   ; drop first argument (command name)
 	mov [error_flag], byte 0
-	mov [number_buffer], byte 0
 read_args:
 	dec rbx   ; --argument_count
 	jz exit   ; when argument count 0 
@@ -54,11 +51,11 @@ read_args:
 	call check_error
 	; rcx = digit count
 	; rsi = input string
-	call read_decimal
+	call parse_decimal
 	call check_error
-	; number_buffer contains decimal
+	; rax contains binary number
 	mov rsi, text_buffer
-	;mov rax, 1002
+	; rsi = string buffer
 	call print_decimal
 
 	call print_hexadecimal
@@ -66,20 +63,47 @@ read_args:
 	jmp read_args
 
 ; ------------------------------
-read_decimal:
+parse_decimal
+	push r8
+	mov r8, 10
+	call parse_radix
+	pop r8
+	ret
+
+; ------------------------------
+print_hexadecimal:
+	call write_hexadecimal
+	call check_error
+	call write_hex_msg
+	call reverse_print
+	call check_error
+	call write_newline
+	ret
+
+; ------------------------------
+print_decimal:
+	call write_decimal_msg
+	call write_decimal
+	call check_error
+	call reverse_print
+	call check_error
+	call write_newline
+	ret
+
+; ------------------------------
+parse_radix:
 	; rcx : digit count
 	; rsi : digit string
+	; r8 : base
 	push rcx
 	push rdx
 	push rsi
 	push rdi
 	push rbx
-	; r8 : base
 	; rdi : result
 	; rbx : char buffer
 	; rax : digit factor accumulator
 	; rdi : result
-	mov r8, 10 ; base 10
 	mov rax, 1
 	mov rdi, 0
 	mov rbx, 0
@@ -94,7 +118,7 @@ next_digit:
 	mul rbx		; rax = rax * rdx
 	add rdi, rax
 	pop rax
-	mul r8		; rax = rax * 10
+	mul r8		; rax = rax * base
 	jmp next_digit
 end_decimal:
 	mov rax, rdi
@@ -105,22 +129,13 @@ end_decimal:
 	pop rdx
 	pop rcx
 	ret
-; ------------------------------
-print_hexadecimal:
-	call write_hexadecimal
-	call check_error
-	call write_hex_msg
-	call reverse_print_decimal
-	call check_error
-	call write_newline
-	ret
 
 ; ------------------------------
 write_hexadecimal:
 	; rcx = output length
 	; rax = decimal buffer
-	; rdx = div remainder
 	; rsi = text buffer
+	; rdx = div remainder
 	; rbx = divisor
 	push rax
 	push rdx
@@ -128,10 +143,11 @@ write_hexadecimal:
 	xor rcx, rcx ; clear for counting
 loop_write_hexadecimal:
 	cmp rcx, 8
-	je overflow_error
-	mov rdx, 0 ; clear for div
-	mov rbx, 16
-	div rbx ; rdx:rax / 16
+	je end_write_hexadecimal
+
+	mov dl, al
+	shr rax, 4 ; rax / 16
+	and dl, 15	; set all bits 5-8 to 0
 	; rax = result
 	; rdx = remainder
 	cmp rdx, 9
@@ -142,46 +158,20 @@ skip_ascii_skip:
 	mov [rsi + rcx], rdx
 	inc rcx
 
-	cmp rax, 0			; stop?
-	je end_write_hexadecimal
-
 	jmp loop_write_hexadecimal
+end_write_hexadecimal:
+	cmp rax, 0			; finished?
+	jne overflow_error
+	jmp finished_write
 overflow_error:
 	call write_overflow_error
 	mov [error_flag], byte 2
-end_write_hexadecimal:
+finished_write:
 	pop rbx
 	pop rdx
 	pop rax
 	ret
 
-; ------------------------------
-reverse_print_hexadecimal:
-	; rcx = input length
-	; rsi = text buffer
-	push rcx
-	push rsi
-	add rsi, rcx
-loop_reverse_print_hex:
-	cmp rcx, 0
-	je end_reverse_print_hex
-	dec rcx
-	dec rsi
-	call write_char
-	jmp loop_reverse_print_hex
-end_reverse_print_hex:
-	pop rsi
-	pop rcx
-	ret
-; ------------------------------
-print_decimal:
-	call write_decimal_msg
-	call write_decimal
-	call check_error
-	call reverse_print_decimal
-	call check_error
-	call write_newline
-	ret
 ; ------------------------------
 write_decimal:
 	; rcx = output length
@@ -214,7 +204,7 @@ end_write_decimal:
 	ret
 
 ; ------------------------------
-reverse_print_decimal:
+reverse_print:
 	; rcx = input length
 	; rsi = text buffer
 	push rcx
@@ -333,44 +323,6 @@ write:
 	pop rcx
 	pop rdi
 	pop rax
-	ret
-; ------------------------------
-count_line_length:
-	push rax ; rax
-	mov al, [newline]
-	; al = end byte
-	; rsi = data
-	call count_length
-	; rcx = length
-	pop rax ;
-	ret
-; ------------------------------
-count_string_length:
-	push rax ; rax
-	mov al, byte 0
-	; al = end byte
-	; rsi = data
-	call count_length
-	; rcx = length
-	pop rax ;
-	ret
-; ------------------------------
-count_length:
-	push rbx ; rbx,
-	push rsi ; rbx, rsi
-	mov rcx, 0
-	; al = end byte
-	; rsi = data
-count_iter:
-	cmp [rsi], al
-	je count_end
-	inc rcx
-	inc rsi
-	jmp count_iter
-count_end:	
-	; rcx = length
-	pop rsi ; rbx,
-	pop rbx ; 
 	ret
 ; ------------------------------
 exit:
