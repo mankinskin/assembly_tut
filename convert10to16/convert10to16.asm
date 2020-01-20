@@ -16,7 +16,7 @@ overflow_msg						db	"Value overflow"
 overflow_msg_len				equ	$-overflow_msg
 decimal_msg						db	"Decimal number = "
 decimal_msg_len				equ	$-decimal_msg
-hex_msg						db	"Hexadecimal number = "
+hex_msg						db	"Hexadecimal number = 0x"
 hex_msg_len				equ	$-hex_msg
 number_buffer		dd			0
 
