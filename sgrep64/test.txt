@@ -1,4 +1,17 @@
-Hello
-World
-Test string
-line numero quatro
+Es müssen 7 Zeilen ausgegeben werden, Teste Programm mit: "abcde"
+
+Ausgabe - Test im Wort am Ende - abcdabcdeabc 
+Ausgabe - Test im Wort am Anfang - abcdeabcde
+keine Ausgabe - Test abgeschnitten - abcd 
+
+Ausgabe - Test mit Leerzeichen am Zeilenende -      abcde
+keine Ausgabe - Test am Zeilenende unvollständig - abcd
+
+abcde
+
+keine Ausgabe - Mit Leerzeichen getrennt - a bcde ab cde abc de abcd e
+keine Ausgabe - Mit Tabs getrennt - a bcde    ab  cde abc de  abcd    e
+keine Ausgabe - Anfang am Ende - eabcd 
+        abcde       Ausgabe - Tabs zu Beginn
+
+abcde

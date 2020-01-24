@@ -100,11 +100,11 @@ next_char:
 	mov rax, r8
 	add rax, rdx ; rax = r8 + rdx
 	cmp rax, rcx ; max length?
-	je end_search
+	je check_match
 	mov rax, rdi
 	add rax, rdx ; rax = rdi + rdx
 	cmp [rax], byte 0 ; end of word?
-	je end_search
+	je check_match
 match_chars:
 	mov rax, [rax]	; char in word
 	push rsi
@@ -115,13 +115,17 @@ match_chars:
 	jmp char_miss
 char_match:
 	inc rdx
-	mov [match_found], byte 1
 	jmp next_char
 char_miss:
 	mov rdx, 0	; match from beginning again
 	inc r8			; inc chars checked
-	mov [match_found], byte 0
 	jmp next_char
+check_match:
+	mov rax, rdi
+	add rax, rdx ; rax = rdi + rdx
+	cmp [rax], byte 0 ; end of word?
+	jne end_search
+	mov [match_found], byte 1
 end_search:	
 	pop r8	; rdx, rax
 	pop rax ; rdx,
